@@ -16,7 +16,7 @@ SERVER_TARGET = tftp-server
 CLIENT_SRCS = $(wildcard $(CLIENT_DIR)/*.cpp) $(wildcard $(UTILS_DIR)/*.cpp)
 CLIENT_OBJS = $(CLIENT_SRCS:.cpp=.o)
 
-SERVER_SRCS = $(wildcard $(SERVER_DIR)./*.cpp) $(wildcard $(UTILS_DIR)./*.cpp)
+SERVER_SRCS = $(wildcard $(SERVER_DIR)/*.cpp) $(wildcard $(UTILS_DIR)/*.cpp)
 SERVER_OBJS = $(SERVER_SRCS:.cpp=.o)
 
 # Include

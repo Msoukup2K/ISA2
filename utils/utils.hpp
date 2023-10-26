@@ -13,6 +13,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+
+
 struct c_parameters{
     std::string host;
     int port;

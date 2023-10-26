@@ -53,27 +53,51 @@ int main( int argc, char *argv[] )
             
             default:
                 std::cerr << "Usage for Client: tftp-client -h hostname [-p port] [-f filename] -t dest_filepath";
-                return 1;
+                exit(1);
         }
     }
 
     if (params.host.empty() || params.dest.empty() )
     {
         std::cerr << "Hostname and destination filepath are required arguments." << std::endl;
-        return 1;
+        exit(1);
+
     }
 
     fs::path dest_wd{params.dest};
     if(!fs::exists(dest_wd) && !fs::is_directory(dest_wd))
     {
-        exit(2);
+        std::cerr << "Cannot find a dest directory" << std::endl;
+        exit(1);
     }
 
-    int socket;
+    int sckt;
 
     struct sockaddr_in s_addr;
     s_addr.sin_family = AF_INET;
+    s_addr.sin_port = htons(params.port);
 
+    socklen_t addr_len{sizeof(s_addr)};
+
+    if ((sckt = socket(AF_INET, SOCK_STREAM,0)) < 0)
+    {
+        std::cerr << "Socket creation failed" << std::endl;
+        exit(1);
+    }
+    if (inet_pton(AF_INET, params.host.c_str(), &s_addr.sin_addr) <= 0 )
+    {
+        std::cerr << "Invalid host" << std::endl;
+        exit(1);
+    }
+    if (connect(sckt, (struct sockaddr *)&s_addr, addr_len) < 0 )
+    {
+        std::cerr << "Cannost establish a connection" << std::endl;
+        exit(1);
+    };
+
+    std::cout << "C: connecting" << std::endl;
+
+    
 
 
     return 0;
