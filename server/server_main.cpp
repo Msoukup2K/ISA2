@@ -10,9 +10,11 @@
 #include <string>
 #include <csignal>
 #include <iostream>
+#include <filesystem>
 
 #include "../utils/utils.hpp"
 
+namespace fs = std::filesystem;
 
 
 int main( int argc, char *argv[] )
@@ -53,6 +55,13 @@ int main( int argc, char *argv[] )
     {
         std::cerr << "Root directory path is required argument." << std::endl;
         return 1;
+    }
+
+    fs::path root_path{params.root};
+    if (!fs::exists(root_path) && !fs::is_directory(root_path))
+    {
+        std::cerr << "Root directory does not exist." << std::endl;
+        return 1; 
     }
 
     
