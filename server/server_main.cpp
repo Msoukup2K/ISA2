@@ -64,7 +64,38 @@ int main( int argc, char *argv[] )
         return 1; 
     }
 
-    
+    std::string interface{"0.0.0.0"};
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(params.port);
+
+    if(inet_pton(AF_INET, interface.c_str(), &addr.sin_addr) <= 0)
+    {
+        std::cerr << "Invalid interface" << std::endl;
+        exit(1);
+    }
+
+    socklen_t addr_len = sizeof(addr);
+    int welcome_socket; 
+    welcome_socket = socket(AF_INET, SOCK_STREAM, 0);
+    int run = 1;
+    while(run == 1)
+    {
+        std::cout << "S: listening" << std::endl;
+
+        int c_socket = accept(welcome_socket, (struct sockaddr*)&addr, &addr_len);
+        if(run)
+        {
+            if(c_socket < 0)
+            {
+                std::cerr << "Accepting request has failed" << std::endl;
+
+            }
+
+            Response initial{Response}
+        } 
+    }
 
     return 0;
 }
