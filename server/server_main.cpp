@@ -93,7 +93,6 @@ int main( int argc, char *argv[] )
 
             }
 
-            Response initial{Response}
         } 
     }
 
