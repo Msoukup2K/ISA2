@@ -13,8 +13,10 @@
 #include <filesystem>
 
 #include "../utils/utils.hpp"
+#include "server.hpp"
 
 namespace fs = std::filesystem;
+
 
 
 int main( int argc, char *argv[] )
