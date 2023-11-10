@@ -51,14 +51,14 @@ public:
 		{
 			sockaddr_in clientAddress;
 			socklen_t clientAddressLen = sizeof(clientAddress);
-			handleUDP(sockfd, clientAddress);
+			handleTFTP(sockfd, clientAddress);
 		} 
 
 	}
 
 private:
 
-	void handleUDP(int clientSocket, const sockaddr_in& clientAddr) 
+	void handleTFTP(int clientSocket, const sockaddr_in& clientAddr) 
 {
     char buffer[BUFSIZE];
     int numbytes = 0;
@@ -90,7 +90,7 @@ private:
             std::string filename(buffer + 2); // Extract the filename from the buffer
             std::cout << "Received Read Request for file: " << filename << std::endl;
 
-            // Implement TFTP read request handling logic here
+            // TFTP Read request
 
             // For example, you can send the file in blocks of 512 bytes as follows:
             // sendto(clientSocket, data, data_size, 0, (struct sockaddr *)&clientAddr, clientAddrLen);
@@ -98,10 +98,10 @@ private:
         }
         else if (opcode == 2) // TFTP Write Request (WRQ)
         {
-            std::string filename(buffer + 2); // Extract the filename from the buffer
+            std::string filename(buffer + 2); 
             std::cout << "Received Write Request for file: " << filename << std::endl;
 
-            // Implement TFTP write request handling logic here
+            // TFTP write request
 
             // For example, you can receive the file in blocks of 512 bytes as follows:
             // recvfrom(clientSocket, buffer, BUFSIZE, 0, (sockaddr*) &clientAddr, &clientAddrLen);
@@ -122,6 +122,7 @@ private:
     close(clientSocket);
 
 }
+
 
 	int serv_port;
 	int sockfd;
