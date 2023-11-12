@@ -71,6 +71,12 @@
         "iterator": "cpp",
         "memory_resource": "cpp",
         "utility": "cpp",
-        "cinttypes": "cpp"
+        "cinttypes": "cpp",
+        "codecvt": "cpp",
+        "numbers": "cpp",
+        "semaphore": "cpp",
+        "sstream": "cpp",
+        "stop_token": "cpp",
+        "thread": "cpp"
     }
 }

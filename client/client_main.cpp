@@ -11,6 +11,9 @@
 #include <csignal>
 #include <iostream>
 #include <filesystem>
+#include <cstdint>
+#include <cstring>
+#include <unistd.h>
 
 #include "../utils/utils.hpp"
 
@@ -57,12 +60,12 @@ int main( int argc, char *argv[] )
         }
     }
 
-    if (params.host.empty() || params.dest.empty() )
+    /*if (params.host.empty() || params.dest.empty() )
     {
         std::cerr << "Hostname and destination filepath are required arguments." << std::endl;
         exit(1);
 
-    }
+    }*/
 
     fs::path dest_wd{params.dest};
     if(!fs::exists(dest_wd) && !fs::is_directory(dest_wd))
@@ -71,34 +74,55 @@ int main( int argc, char *argv[] )
         exit(1);
     }
 
-    int sckt;
+    int sckt; 
 
+    char buffer[100];
+    char *message = "Hello Server\0";
+    int n;
     struct sockaddr_in s_addr;
-    s_addr.sin_family = AF_INET;
+    bzero(&s_addr, sizeof(s_addr));
+    s_addr.sin_addr.s_addr = inet_addr(params.host.c_str());
     s_addr.sin_port = htons(params.port);
+    s_addr.sin_family = AF_INET;
 
-    socklen_t addr_len{sizeof(s_addr)};
-
-    if ((sckt = socket(AF_INET, SOCK_STREAM,0)) < 0)
+    if ((sckt = socket(AF_INET, SOCK_DGRAM,0)) < 0)
     {
         std::cerr << "Socket creation failed" << std::endl;
         exit(1);
     }
-    if (inet_pton(AF_INET, params.host.c_str(), &s_addr.sin_addr) <= 0 )
-    {
-        std::cerr << "Invalid host" << std::endl;
-        exit(1);
-    }
-    if (connect(sckt, (struct sockaddr *)&s_addr, addr_len) < 0 )
-    {
-        std::cerr << "Cannost establish a connection" << std::endl;
-        exit(1);
-    };
 
+    
     std::cout << "C: connecting" << std::endl;
 
     
 
+        if(sendto(sckt, message, strlen(message), 0, (struct sockaddr *)&s_addr, sizeof(s_addr)) < 0)
+        {
+            perror("S fail");
+            std::cerr << "Sending failed";
+        }
+
+        socklen_t server_len = sizeof(s_addr);
+
+        if(recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr *)&s_addr, &server_len) < 0)
+        {
+            perror("S fail");
+
+            std::cerr << "Faioled to get a respo" << std::endl;
+
+        }
+
+        std::string response(buffer); 
+
+        std::cout << response << std::endl;
+
+    
+
+   /*struct sockaddr_in *sin = (struct sockaddr_in *)&s_addr;
+
+    recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr*)NULL, NULL);
+    puts(buffer);*/
+    close(sckt);
 
     return 0;
 }

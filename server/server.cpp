@@ -15,18 +15,16 @@
 
 #define BUFSIZE 1024
 
-
 class Server {
 public:
-    Server(int port_s, const char* serverAdress, std::string root)
+    Server(int port_s = 69, const char* serverAdress = "127.0.0.1", std::string root = "current")
         : serv_port(port_s), stopRequest(false),root_dirpath(root), sockfd(-1)
     {
 
         sockaddr_in adress;
-		std::memset(&adress, 0, sizeof(sockaddr_in));
         adress.sin_family = AF_INET;
-        adress.sin_addr.s_addr = inet_addr(serverAdress);
-        adress.sin_port = htons(serv_port);
+        adress.sin_addr.s_addr = htonl(INADDR_ANY);
+        adress.sin_port = htons(port_s);
 
        
             sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -35,7 +33,6 @@ public:
                 std::cerr << "ERROR creating UDP socket";
                 exit( EXIT_FAILURE );
             }
-
             if (bind(sockfd, (sockaddr*)&adress, sizeof(adress)) < 0)
             {
                 std::cerr << "ERROR could not bind socket to adress";
@@ -68,7 +65,7 @@ private:
     while(true)
     {
         numbytes = recvfrom(clientSocket, buffer, BUFSIZE, 0, (sockaddr*) &clientAddr, &clientAddrLen);
-
+        std::cout << "numbytes" << std::endl;
         if( numbytes == -1)
         {
             std::cerr << "Error in recvfrom(), Exiting";
