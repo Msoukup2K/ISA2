@@ -13,7 +13,19 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+struct TFTPDataBlock
+{
+    uint16_t opcode;
+    uint16_t blockNumber;
+    char data[512];
+};
 
+struct TFTPRequest
+{
+    uint16_t opcode;
+    char filename[100];
+    char mode[10];
+};
 
 struct c_parameters{
     std::string host;

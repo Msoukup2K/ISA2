@@ -1,1 +1,1 @@
-server/server.o: server/server.cpp
+server/server.o: server/server.cpp server/../utils/utils.hpp

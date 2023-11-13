@@ -12,120 +12,166 @@
 #include <cctype>
 #include <sstream>
 #include <stack>
+#include <fstream>
+
+#include "../utils/utils.hpp"
 
 #define BUFSIZE 1024
 
 class Server {
 public:
-    Server(int port_s = 69, const char* serverAdress = "127.0.0.1", std::string root = "current")
-        : serv_port(port_s), stopRequest(false),root_dirpath(root), sockfd(-1)
+    Server(int port_s = 69, std::string root = "server_dir")
+        : serv_port(port_s), stopRequest(false),root_dirpath(root), sockfd(-1), c_adress()
     {
 
-        sockaddr_in adress;
-        adress.sin_family = AF_INET;
-        adress.sin_addr.s_addr = htonl(INADDR_ANY);
-        adress.sin_port = htons(port_s);
+		for( int i = 0; i<100;i++)
+		{
+			buffer[i] = '\0';
 
-       
-            sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-            if ( sockfd < 0 )
-            {
-                std::cerr << "ERROR creating UDP socket";
-                exit( EXIT_FAILURE );
-            }
-            if (bind(sockfd, (sockaddr*)&adress, sizeof(adress)) < 0)
-            {
-                std::cerr << "ERROR could not bind socket to adress";
-                close(sockfd);
-                exit(EXIT_FAILURE);
-            }
-        }
+		}
 
+		socklen_t len;
+		struct sockaddr_in servaddr;
+		bzero(&servaddr, sizeof(servaddr));
+
+		sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+		if (sockfd < 0)
+		{
+			std::cout << "Error opening socket" << std::endl;
+		}
+		servaddr.sin_addr.s_addr = INADDR_ANY;
+		servaddr.sin_port = htons(port_s);
+		servaddr.sin_family = AF_INET;
+
+		int reuse = 1;
+		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+		{
+			perror("setsockopt(SO_REUSEADDR) failed");
+			// Handle the error
+		}
+
+		if(bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)))
+		{
+			perror("Error handling socket");
+			std::cout << "Error creating a socket, could not bind" << std::endl;
+		}
+	}
 
 	void Start() {
 
-		while( !stopRequest )
+		socklen_t len;
+
+		while(1)
 		{
-			sockaddr_in clientAddress;
-			socklen_t clientAddressLen = sizeof(clientAddress);
-			handleTFTP(sockfd, clientAddress);
-		} 
+			len = sizeof(c_adress);
+			int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&c_adress, &len);
+
+			
+			struct sockaddr_in *sin = (struct sockaddr_in *)&c_adress;
+
+            buffer[n] = '\0';
+            puts(buffer);	
+            fprintf(stdout, "Incoming request from %s:%d\n", inet_ntoa(sin->sin_addr), sin->sin_port);
+
+
+            handleTFTPRequest();
+
+            memset(buffer, 0, sizeof(buffer));
+			
+		}
 
 	}
 
 private:
-
-	void handleTFTP(int clientSocket, const sockaddr_in& clientAddr) 
-{
-    char buffer[BUFSIZE];
-    int numbytes = 0;
-
-    socklen_t clientAddrLen = sizeof(clientAddr);
-
-    while(true)
+   
+ void handleTFTPRequest()
     {
-        numbytes = recvfrom(clientSocket, buffer, BUFSIZE, 0, (sockaddr*) &clientAddr, &clientAddrLen);
-        std::cout << "numbytes" << std::endl;
-        if( numbytes == -1)
+		struct sockaddr_in *sin = (struct sockaddr_in *)&c_adress;
+
+        //Extract opcode from the TFTP request
+        uint16_t opcode = (buffer[0] << 8) | buffer[1];
+
+        // Handle different TFTP opcodes
+        switch (opcode)
         {
-            std::cerr << "Error in recvfrom(), Exiting";
-            continue;
-        }
-
-        if( numbytes == 0 )
-        {
-            std::cout << "Client disconnected " << std::endl;
-            continue;
-        }
-
-        uint16_t opcode = ntohs(*reinterpret_cast<uint16_t*>(buffer)); // TFTP opcode is 2 bytes
-        uint16_t status = 0; // Assuming status codes are 2 bytes
-        uint16_t result = 0;
-
-        if (opcode == 1) // TFTP Read Request (RRQ)
-        {
-            std::string filename(buffer + 2); // Extract the filename from the buffer
-            std::cout << "Received Read Request for file: " << filename << std::endl;
-
-            // TFTP Read request
-
-            // For example, you can send the file in blocks of 512 bytes as follows:
-            // sendto(clientSocket, data, data_size, 0, (struct sockaddr *)&clientAddr, clientAddrLen);
-
-        }
-        else if (opcode == 2) // TFTP Write Request (WRQ)
-        {
-            std::string filename(buffer + 2); 
-            std::cout << "Received Write Request for file: " << filename << std::endl;
-
-            // TFTP write request
-
-            // For example, you can receive the file in blocks of 512 bytes as follows:
-            // recvfrom(clientSocket, buffer, BUFSIZE, 0, (sockaddr*) &clientAddr, &clientAddrLen);
-
-        }
-        else
-        {
-            // Unsupported opcode, send an error response
-            std::string error = "Unsupported TFTP opcode";
-            status = 5; // Error code 5 for unknown transfer ID
-            uint16_t response[BUFSIZE] = {0, status};
-            std::memcpy(response + 2, error.c_str(), error.size());
-            sendto(clientSocket, (char*)response, error.size() + 2, 0, (struct sockaddr *)&clientAddr, clientAddrLen);
-            continue;
+        case 1:
+            // Read request (RRQ)
+            handleRRQ();
+			fprintf(stdout, "Incoming request from %s:%d with opcode %d\n", inet_ntoa(sin->sin_addr), sin->sin_port, opcode);
+            break;
+        case 2:
+            // Write request (WRQ)
+            //handleWRQ();
+			fprintf(stdout, "Incoming request from %s:%d with opcode %d\n", inet_ntoa(sin->sin_addr), sin->sin_port, opcode);
+            break;
+        // Add more cases as needed for other TFTP opcodes
+        default:
+            // Unsupported opcode
+            break;
         }
     }
 
-    close(clientSocket);
+    void handleRRQ()
+    {
+        // Extract filename from the TFTP request
+        std::string filename(&buffer[2]);
+		
+		std::string filepath = root_dirpath + "/" + filename;
+        std::ifstream file(filepath.c_str(), std::ios::binary);
+		if ( !file.is_open() )
+		{
+			std::cerr << "Error opening file: " << filepath << std::endl;
+			return;
+		}
 
-}
+        std::vector<char> file_buffer(std::istreambuf_iterator<char>(file), {});
 
+		file.close();
+		
+		size_t num_blocks = (file_buffer. size() + 511) / 512 ;
+		std::cout << num_blocks << std::endl;
+
+		for( size_t block = 1; block <= num_blocks; ++block)
+		{
+			size_t start_pos = (block - 1) * 512;
+            size_t end_pos = std::min(start_pos + 512, file_buffer.size());
+
+            TFTPDataBlock data_block;
+			data_block.opcode = htons(3);
+			data_block.blockNumber = htons(block);
+
+            // Copy the file content into the data block
+            std::copy(file_buffer.begin() + start_pos, file_buffer.begin() + end_pos, data_block.data);
+
+            // Send the data block to the client
+           	if(sendto(sockfd, &data_block, sizeof(data_block), 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
+			{
+				perror("Sending dataFile");
+				std::cerr << "Failed to send data block. Error code: " << errno << std::endl;
+			}
+
+			//sendto(sockfd, data_block.data(), data_block.size(), 0, (struct sockaddr *)&c_adress, sizeof(c_adress));
+		}
+
+       
+    }
+
+    void handleWRQ()
+    {
+        // Extract filename from the TFTP request
+        std::string filename(&buffer[2]);
+
+        // TODO: Implement logic to receive and write the file in response to WRQ
+        // You can use the filename and root_dirpath to construct the file path
+    }
 
 	int serv_port;
 	int sockfd;
-	sockaddr_in adress;
+	sockaddr_in c_adress;
 	const std::string root_dirpath;
 	std::vector<int> clients;
 	bool stopRequest;
+	char buffer[100];
+
 
 };
