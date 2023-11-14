@@ -108,7 +108,7 @@ private:
 
     void handleRRQ()
     {
-		//TODO Blocksize
+		//TODO OACK pro both
         // Extract filename from the TFTP request
         std::string filename(&buffer[2]);
 		
@@ -120,34 +120,69 @@ private:
 			return;
 		}
 
-        std::vector<char> file_buffer(std::istreambuf_iterator<char>(file), {});
+		sendAck(0,6);
 
-		file.close();
-		
-		size_t num_blocks = (file_buffer. size() + 511) / 512 ;
-		std::cout << num_blocks << std::endl;
+		socklen_t client_len = sizeof(c_adress);
+		ssize_t received = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&c_adress, &client_len);
 
-		for( size_t block = 1; block <= num_blocks; ++block)
+		if(received < 0 )
 		{
-			size_t start_pos = (block - 1) * 512;
-            size_t end_pos = std::min(start_pos + 512, file_buffer.size());
+			perror("Receiving failed");
 
-            TFTPDataBlock data_block;
+			std::cerr << "Failed to receive initial data block" << std::endl;
+			return;
+		}
+
+		uint16_t clientBlocksize = 512;
+
+		if(received >= 4 )
+		{
+			TFTPDataBlock *dataBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
+
+			if(ntohs(dataBlock->opcode) == 3)
+			{
+				clientBlocksize = ntohs(dataBlock->blockNumber);
+
+				sendAck(0,6);
+			}
+			else
+			{
+				std::cerr << "Unexpected tftp packet type" << std::endl;
+
+				return;
+
+			}
+		}
+
+		const size_t blockSize = clientBlocksize > 0 ? clientBlocksize : 512;
+
+		size_t block = 1;
+		while(true)
+		{
+			std::vector<char> file_buffer(blockSize);
+
+			file.read(file_buffer.data(), blockSize);
+
+			TFTPDataBlock data_block;
 			data_block.opcode = htons(3);
 			data_block.blockNumber = htons(block);
 
-            // Copy the file content into the data block
-            std::copy(file_buffer.begin() + start_pos, file_buffer.begin() + end_pos, data_block.data);
-
-            // Send the data block to the client
-           	if(sendto(sockfd, &data_block, sizeof(data_block), 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
-			{
-				perror("Sending dataFile");
-				std::cerr << "Failed to send data block. Error code: " << errno << std::endl;
+			if(sendto(sockfd, &data_block, file_buffer.size() + 4, 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
+			{ 
+				perror("Error handling data block");
+				std::cerr << "Failed to send data block: " << errno << std::endl;
+				break;
 			}
 
-		}
+			++block;
 
+			if( file_buffer.size() < blockSize)
+				break;
+
+
+		}
+		file.close();
+		
        
     }
 
@@ -172,7 +207,7 @@ private:
 		}
 
 
-		sendAck(0);
+		sendAck(0,6);
 
 		size_t block = 1;
 
@@ -195,7 +230,7 @@ private:
 			{
 				clientBlocksize = ntohs(datablock->blockNumber);
 
-				sendAck(0);
+				sendAck(0,4);
 			}
 			else
 			{
@@ -255,13 +290,13 @@ private:
 
     }
 
-	void sendAck(uint16_t block)
+	void sendAck(uint16_t block,int opc)
 	{
 		std::cout << "Sending ACK packet." << std::endl;
 
 		TFTPDataBlock acknowledment;
 
-		acknowledment.opcode = htons(4);
+		acknowledment.opcode = htons(opc);
 		acknowledment.blockNumber = htons(block);
 
 		if( sendto(sockfd, &acknowledment, sizeof(acknowledment), 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
@@ -272,6 +307,7 @@ private:
 		}
 
 	}
+
 
 	int serv_port;
 	int sockfd;
