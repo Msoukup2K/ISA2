@@ -108,6 +108,7 @@ private:
 
     void handleRRQ()
     {
+		//TODO Blocksize
         // Extract filename from the TFTP request
         std::string filename(&buffer[2]);
 		
