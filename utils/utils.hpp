@@ -25,6 +25,7 @@ struct TFTPRequest
     uint16_t opcode;
     char filename[100];
     char mode[10];
+    char options[50];
 };
 
 struct c_parameters{
