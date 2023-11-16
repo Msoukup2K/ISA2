@@ -66,8 +66,7 @@ public:
 			len = sizeof(c_adress);
 			int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&c_adress, &len);
 
-            buffer[n] = '\0';
-            puts(buffer);	
+            
             handleTFTPRequest();
 
             memset(buffer, 0, sizeof(buffer));
@@ -84,7 +83,7 @@ private:
 
         //Extract opcode from the TFTP request
         uint16_t opcode = (buffer[0] << 8) | buffer[1];
-		std::cout << "S: Opcode: " << opcode << std::endl; 
+		
         // Handle different TFTP opcodes
         switch (opcode)
         {
@@ -105,15 +104,10 @@ private:
 
     void handleRRQ()
     {
-        // Extract filename from the TFTP request
-        std::string filename(&buffer[2]);
-		std::string option(&buffer[3]);
-		std::cout << "filename: " << filename << std::endl;
-
-		std::cout << "option: " << option << std::endl;
+		TFTPRequest *request = reinterpret_cast<TFTPRequest *>(buffer);
 
 		
-		std::string filepath = root_dirpath + "/" + filename;
+		std::string filepath = root_dirpath + "/" + request->filename;
         std::ifstream file(filepath.c_str(), std::ios::binary);
 		if ( !file.is_open() )
 		{
