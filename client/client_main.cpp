@@ -16,9 +16,29 @@
 #include <unistd.h>
 
 #include "../utils/utils.hpp"
+#define BUFSIZE 1024
 
 
 namespace fs = std::filesystem;
+
+
+void sendAck(int sockfd, sockaddr_in adress ,uint16_t block,int opc)
+{
+    std::cout << "Sending ACK packet." << std::endl;
+
+    TFTPDataBlock acknowledment;
+
+    acknowledment.opcode = htons(opc);
+    acknowledment.blockNumber = htons(block);
+
+    if( sendto(sockfd, &acknowledment, sizeof(acknowledment), 0, (struct sockaddr *)&adress, sizeof(adress)) < 0)
+    {
+        perror("Error sending ACK packet");
+        std::cerr << "Failed to send ACK packet. Error code: " << errno << std::endl;
+
+    }
+
+}
 
 int main( int argc, char *argv[] )
 {
@@ -71,7 +91,7 @@ int main( int argc, char *argv[] )
 
     int sckt; 
 
-    char buffer[100];
+    char buffer[BUFSIZE];
     int n;
     struct sockaddr_in s_addr;
     bzero(&s_addr, sizeof(s_addr));
@@ -94,9 +114,10 @@ int main( int argc, char *argv[] )
     {
         request.opcode = htons(1); //RRQ opcode
 
-        strncpy(request.filename, "example.txt", sizeof(request.filename));
-        strncpy(request.mode, "octet", sizeof(request.mode));
-        strncpy(request.options, "blksize=1024", sizeof(request.options));
+        strncpy(request.filename, "example.txt\0", sizeof(request.filename));
+        strncpy(request.mode, "octet\0", sizeof(request.mode));
+        strncpy(request.options, "blksize\0", sizeof(request.options));
+        strncpy(request.optionValue,"1024\0", sizeof(request.optionValue));
     }
 
     if ((sckt = socket(AF_INET, SOCK_DGRAM,0)) < 0)
@@ -143,7 +164,7 @@ int main( int argc, char *argv[] )
                 uint16_t rblock = ntohs(responseBlock->blockNumber);
 
                 std::cout << "Received data Block #" << rblock << std::endl;
-                std::cout << "Received data: " << responseBlock->data << std::endl;
+                
             }
             else
             {
@@ -183,9 +204,8 @@ int main( int argc, char *argv[] )
     }
     else
     {
-        //RRQ
+            //RRQ
             ssize_t received = recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr *)&s_addr, &server_len);
-
             if( received < 0)
             {
                 perror("S fail");
@@ -193,26 +213,61 @@ int main( int argc, char *argv[] )
                 std::cerr << "Faioled to get a respo" << std::endl;
 
             }
-
+            size_t block = 0;
             if( received >= 4)
             {
-                TFTPDataBlock *dataBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
+                TFTPDataBlock *responseBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
 
-                if (ntohs(dataBlock->opcode) == 3)
+                if (ntohs(responseBlock->opcode) == 6)
                 {
-                    uint16_t block = ntohs(dataBlock->blockNumber);
+                    uint16_t rblock = ntohs(responseBlock->blockNumber);
 
-                    std::cout << "Received data Block #" << block << std::endl;
-                    std::cout << "Received data: " << dataBlock->data << std::endl;
+                    std::cout << "Received OACK" << rblock << std::endl;
+
+
+                    sendAck(sckt, s_addr, block, 4);
+
                 }
                 else
                 {
-                    std::cerr << "Unexpected TFTP packet" << std::endl;
+                    std::cout << "ERROR musí byt negotiated blocksize" << std::endl;
+                    exit(1);
+                }
+                
+            }
 
+            while(true)
+            {
+                ssize_t received = recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr *)&s_addr, &server_len);
+                std::cout << "Received bytes: " << received << std::endl;
+
+                if( received >= 4)
+                {
+                    TFTPDataBlock *dataBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
+                    if (ntohs(dataBlock->opcode) == 3)
+                    {
+                        uint16_t block = ntohs(dataBlock->blockNumber);
+
+                        std::cout << "Received data Block #" << block << std::endl;
+                        std::cout << "Received bytes: " << dataBlock->data << std::endl;
+
+                        sendAck(sckt, s_addr, ++block, 4);
+
+                        if( received < 512 )
+                        {
+                            break;
+                        }
+
+                    }
+                    else
+                    {
+                        std::cerr << "Unexpected TFTP packet" << std::endl;
+
+                    }
                 }
             }
+        
     }
-
 
     close(sckt);
 

@@ -24,7 +24,7 @@ public:
         : serv_port(port_s), stopRequest(false),root_dirpath(root), sockfd(-1), c_adress()
     {
 
-		for( int i = 0; i<100;i++)
+		for( int i = 0; i<BUFSIZE ;i++)
 		{
 			buffer[i] = '\0';
 
@@ -66,11 +66,8 @@ public:
 			len = sizeof(c_adress);
 			int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&c_adress, &len);
 
-		
             buffer[n] = '\0';
             puts(buffer);	
-
-
             handleTFTPRequest();
 
             memset(buffer, 0, sizeof(buffer));
@@ -108,9 +105,13 @@ private:
 
     void handleRRQ()
     {
-		//TODO OACK pro both
         // Extract filename from the TFTP request
         std::string filename(&buffer[2]);
+		std::string option(&buffer[3]);
+		std::cout << "filename: " << filename << std::endl;
+
+		std::cout << "option: " << option << std::endl;
+
 		
 		std::string filepath = root_dirpath + "/" + filename;
         std::ifstream file(filepath.c_str(), std::ios::binary);
@@ -139,11 +140,13 @@ private:
 		{
 			TFTPDataBlock *dataBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
 
-			if(ntohs(dataBlock->opcode) == 3)
+			if(ntohs(dataBlock->opcode) == 4)
 			{
 				clientBlocksize = ntohs(dataBlock->blockNumber);
 
-				sendAck(0,6);
+				std::cout << clientBlocksize << std::endl;
+				std::cerr << "Got ACK od klienta" << std::endl;
+
 			}
 			else
 			{
@@ -160,14 +163,17 @@ private:
 		while(true)
 		{
 			std::vector<char> file_buffer(blockSize);
+    		file.read(file_buffer.data(), blockSize);
 
-			file.read(file_buffer.data(), blockSize);
+			size_t actualDataSize = static_cast<size_t>(file.gcount());
+
 
 			TFTPDataBlock data_block;
 			data_block.opcode = htons(3);
 			data_block.blockNumber = htons(block);
+            memcpy(data_block.data, file_buffer.data(), actualDataSize);
 
-			if(sendto(sockfd, &data_block, file_buffer.size() + 4, 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
+			if(sendto(sockfd, &data_block, actualDataSize + 4, 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
 			{ 
 				perror("Error handling data block");
 				std::cerr << "Failed to send data block: " << errno << std::endl;
@@ -176,9 +182,49 @@ private:
 
 			++block;
 
-			if( file_buffer.size() < blockSize)
+			std::cerr << "size" << file_buffer.size() << "vs blocksize " << blockSize << std::endl;
+
+			if( file.eof() )
+			{
+				
 				break;
 
+			}
+
+
+			received = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&c_adress, &client_len);
+
+			if (received < 0)
+            {
+                perror("Receiving acknowledgment failed");
+                std::cerr << "Failed to receive acknowledgment. Error code: " << errno << std::endl;
+                // You may handle the error and send an appropriate response to the client
+                break;
+            }
+
+			 if (received >= 4)
+            {
+                TFTPDataBlock *ackPacket = reinterpret_cast<TFTPDataBlock *>(buffer);
+
+                // Check if it's an acknowledgment packet
+                if (ntohs(ackPacket->opcode) == 4)
+                {
+                }
+                else
+                {
+                    // Unexpected packet type or block number
+                    std::cerr << "Unexpected acknowledgment packet" << std::endl;
+                    // You may handle the error and send an appropriate response to the client
+                    break;
+                }
+            }
+            else
+            {
+                // Invalid acknowledgment packet size
+                std::cerr << "Invalid acknowledgment packet size" << std::endl;
+                // You may handle the error and send an appropriate response to the client
+                break;
+            }
 
 		}
 		file.close();
@@ -230,7 +276,7 @@ private:
 			{
 				clientBlocksize = ntohs(datablock->blockNumber);
 
-				sendAck(0,4);
+				sendAck(block,4);
 			}
 			else
 			{
@@ -265,7 +311,7 @@ private:
 
 						++block;
 
-						sendAck(block);
+						sendAck(block,4);
 					}
 					else
 					{
@@ -307,7 +353,7 @@ private:
 		}
 
 	}
-
+	
 
 	int serv_port;
 	int sockfd;
@@ -315,7 +361,7 @@ private:
 	const std::string root_dirpath;
 	std::vector<int> clients;
 	bool stopRequest;
-	char buffer[100];
+	char buffer[BUFSIZE];
 
 
 };
