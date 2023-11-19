@@ -19,14 +19,9 @@ namespace fs = std::filesystem;
 
 #define MAXLINE 1000
 
+
 int main( int argc, char *argv[] )
 {
-
-    /*struct sigaction interrupt_handle;
-
-    interrupt_handle.sa_flags = on_close;
-
-    sigemptyset(&interrupt_handle.sa_mask);*/
 
     struct s_parameters params;
     
@@ -44,7 +39,7 @@ int main( int argc, char *argv[] )
                 break;
         
             default:
-                std::cerr << "Usage for Server: tftp-server [-p port] root_dirpath." << std::endl;
+                std::cout << "Usage for Server: tftp-server [-p port] root_dirpath." << std::endl;
                 return 1;
         }
     }
@@ -55,19 +50,19 @@ int main( int argc, char *argv[] )
     }
     else
     {
-        std::cerr << "Root directory path is required argument." << std::endl;
+        std::cout << "Root directory path is required argument." << std::endl;
         return 1;
     }
 
     if (!fs::exists(params.root) && !fs::is_directory(params.root))
     {
-        std::cerr << "Root directory does not exist." << std::endl;
+        std::cout << "Root directory does not exist." << std::endl;
         return 1; 
     }
 
     fs::path root_path{params.root};
 
-    Server server;
+    Server server(params.port, params.root);
     server.Start();
     
     

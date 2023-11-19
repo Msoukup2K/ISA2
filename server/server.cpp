@@ -14,17 +14,37 @@
 #include <sstream>
 #include <stack>
 #include <fstream>
+#include <filesystem>
+#include <csignal>
 
 #include "../utils/utils.hpp"
 #include "../utils/netasciiparser.hpp"
+#include "../utils/infowriter.hpp"
 
-#define BUFSIZE 1024
+#define BUFSIZE 512
+
+namespace fs = std::filesystem;
+
+/*static volatile sig_atomic_t stopRequest;
+static void handleSIGINT(int signum)
+{
+	std::cout << "Closing server" << std::endl;
+
+	exit(signum);
+
+}*/
 
 class Server {
 public:
-    Server(int port_s = 69, std::string root = "server_dir")
-        : serv_port(port_s), stopRequest(false),root_dirpath(root), sockfd(-1), c_adress()
+    Server(int port_s = 69, std::string root = "")
+        : serv_port(port_s),stopRequest(false),root_dirpath(root), sockfd(-1), c_adress()
     {
+		if( root_dirpath == "")
+		{
+			exit(1);
+		}
+
+		//signal(SIGINT,handleSIGINT);
 
 		for( int i = 0; i<BUFSIZE ;i++)
 		{
@@ -35,31 +55,32 @@ public:
 		socklen_t len;
 		struct sockaddr_in servaddr;
 		bzero(&servaddr, sizeof(servaddr));
+		servaddr.sin_addr.s_addr = INADDR_ANY;
+		servaddr.sin_port = htons(port_s);
+		servaddr.sin_family = AF_INET;
 
 		sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 		if (sockfd < 0)
 		{
 			std::cout << "Error opening socket" << std::endl;
 		}
-		servaddr.sin_addr.s_addr = INADDR_ANY;
-		servaddr.sin_port = htons(port_s);
-		servaddr.sin_family = AF_INET;
 
 		int reuse = 1;
 		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
 		{
-			perror("setsockopt(SO_REUSEADDR) failed");
 			// Handle the error
 		}
 
 		if(bind(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)))
 		{
-			perror("Error handling socket");
 			std::cout << "Error creating a socket, could not bind" << std::endl;
-		}
+			close(sockfd);
+			exit(1);
+		}	
 	}
 
-	void Start() {
+	void Start() 
+	{
 
 		socklen_t len;
 
@@ -67,8 +88,7 @@ public:
 		{
 			len = sizeof(c_adress);
 			int n = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr*)&c_adress, &len);
-
-            
+			            
             handleTFTPRequest();
 
             memset(buffer, 0, sizeof(buffer));
@@ -76,6 +96,7 @@ public:
 		}
 
 	}
+
 
 private:
    
@@ -94,6 +115,18 @@ private:
             // Write request (WRQ)
             handleWRQ();
             break;
+		case 3:
+			writeDATA(c_adress, serv_port, 0);
+			break;
+		case 4:
+			writeACK(c_adress,0);
+			break;
+		case 5:
+			writeERROR(c_adress,serv_port,4,"Illegal TFTP operation");
+			break;
+		case 6:
+			writeOACK(c_adress);
+			break;
         default:
             break;
         }
@@ -107,7 +140,8 @@ private:
         std::ifstream file(filepath.c_str(), std::ios::binary);
 		if ( !file.is_open() )
 		{
-			std::cerr << "Error opening file: " << filepath << std::endl;
+			std::cout << "Error opening file: " << filepath << std::endl;
+			//TODO ERRORS
 			return;
 		}
 
@@ -152,6 +186,8 @@ private:
 			
 			i++;
     	}
+		writeRRQ(c_adress, request->filename, request->mode, optionVector);
+
 
 		if( !optionVector.empty() )
 		{
@@ -160,35 +196,31 @@ private:
 
 			if(received < 0 )
 			{
-				perror("Receiving failed");
-
-				std::cerr << "Failed to receive initial data block" << std::endl;
+				std::cout << "Failed to receive initial data block" << std::endl;
 				return;
 			}
+			
+			uint16_t opcode = (buffer[0] << 8) | buffer[1];
 
+			if( opcode != 4 )
+			{
+				//Poslat error paket
+				return;
+			}
 			if(received >= 4 )
 			{
-				TFTPDataBlock *dataBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
+				TFTPACK *dataBlock = reinterpret_cast<TFTPACK *>(buffer);
 
-				if(ntohs(dataBlock->opcode) == 4)
+				if(dataBlock->blockNumber != 0)	
 				{
-					clientBlocksize = blocksize;
-
-					std::cout << clientBlocksize << std::endl;
-					std::cerr << "Got ACK od klienta" << std::endl;
-
+					//poslat Error ze prisel spatny block
 				}
-				else
-				{
-					std::cerr << "Unexpected tftp packet type" << std::endl;
 
-					return;
-
-				}
+				writeACK(c_adress, dataBlock->blockNumber);
 			}
 		}
 
-		const size_t blockSize = clientBlocksize > 0 ? clientBlocksize : 512;
+		const size_t blockSize = blocksize > 0 ? blocksize : 512;
 		size_t block = 1;
 		while(true)
 		{
@@ -209,7 +241,6 @@ private:
 			{
 				 sizeToSend = actualDataSize;
 			}
-			std::cout << "WTF::" << sizeToSend << "blocksize: " << blockSize << " txtsize: " << actualDataSize << std::endl;
 
 			TFTPDataBlock data_block;
 			data_block.opcode = htons(3);
@@ -222,8 +253,7 @@ private:
 
 			if(sendto(sockfd, &data_block, sizeToSend + 4, 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
 			{ 
-				perror("Error handling data block");
-				std::cerr << "Failed to send data block: " << errno << std::endl;
+				std::cout << "Failed to send data block: " << errno << std::endl;
 				break;
 			}
 
@@ -233,7 +263,6 @@ private:
 
 			if( result == -1)
 			{
-				perror("select error");
 				return;
 			}
 			else if( result == 0 )
@@ -241,8 +270,7 @@ private:
 				std::cout << "Timeout occured" << std::endl;
 				if(sendto(sockfd, &data_block, sizeToSend + 4, 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
 				{ 
-					perror("Error handling data block");
-					std::cerr << "Failed to send data block: " << errno << std::endl;
+					std::cout << "Failed to send data block: " << errno << std::endl;
 					break;
 				}
 			}
@@ -258,40 +286,40 @@ private:
 
 			if (received < 0)
             {
-                perror("Receiving acknowledgment failed");
-                std::cerr << "Failed to receive acknowledgment. Error code: " << errno << std::endl;
+                std::cout << "Failed to receive acknowledgment. Error code: " << errno << std::endl;
                 // You may handle the error and send an appropriate response to the client
                 break;
             }
+			uint16_t opcode = (buffer[0] << 8) | buffer[1];
 
-			 if (received >= 4)
+			if( opcode != 4)
+			{
+				//Send error paket
+				return;
+			}
+			if (received >= 4)
             {
 
                 TFTPDataBlock *ackPacket = reinterpret_cast<TFTPDataBlock *>(buffer);
 
-                // Check if it's an acknowledgment packet
-                if (ntohs(ackPacket->opcode) == 4)
-                {
-					std::cout << "KOINEC" << std::endl;
-                }
-                else
-                {
-                    // Unexpected packet type or block number
-                    std::cerr << "Unexpected acknowledgment packet" << std::endl;
-                    // You may handle the error and send an appropriate response to the client
-                    break;
-                }
+                //Check block
+				if( ackPacket->blockNumber = block)
+				{
+					//SEND ERROR
+					std::cout << "zly error blok" << std::endl;
+					return;
+				}
+				writeACK(c_adress, ackPacket->blockNumber);
+
             }
             else
             {
                 // Invalid acknowledgment packet size
-                std::cerr << "Invalid acknowledgment packet size" << std::endl;
+                std::cout << "Invalid acknowledgment packet size" << std::endl;
                 // You may handle the error and send an appropriate response to the client
                 break;
             }
-			std::cout << "kokot" << std::endl;
 			
-
 		}
 		file.close();
 		
@@ -300,66 +328,134 @@ private:
 
     void handleWRQ()
     {
-		struct sockaddr_in *sin = (struct sockaddr_in *)&c_adress;
+      		
+		TFTPRequest *request = reinterpret_cast<TFTPRequest *>(buffer);
 
-		fprintf(stdout, "Incoming request from %s:%d\n", inet_ntoa(sin->sin_addr), sin->sin_port);
 
-        // Extract filename from the TFTP request
-        std::string filename(&buffer[2]);
+		std::string filepath = root_dirpath + "/" + request->filename;
+		fs::path dest_wd{filepath};
 
-		std::string filepath = root_dirpath + "/" + filename;
 
-		std::ofstream file(filepath, std::ios::binary);
+		std::ofstream file(dest_wd, std::ios::binary | std::ios::app);
 
 		if(!file.is_open())
 		{
-			std::cerr << "Error opening file for writing" << filepath << std::endl;
+			std::cout << "Error opening file for writing" << filepath << std::endl;
 
 			return;
 		}
 
+		int blocksize = 0;
+		int tsize = 0;
+		struct timeval timeout;
+		//kontrola co to je za option musi se projit vsechna option
 
-		sendAck(0,6);
+		std::vector<OptionInfo> optionVector;
+		int i = 1;
+    	for (const auto &opt : request->opts) {
+			
+			if( !strcmp( opt.option, "blksize"))
+			{
+				blocksize = atoi(opt.value);
+				optionVector.emplace_back("blksize", opt.value, i);
+
+				std::cout << blocksize << std::endl;
+
+			}
+			else if( !strcmp( opt.option, "tsize"))
+			{
+				tsize = atoi(opt.value);
+				if(tsize > 65535)
+				{
+					continue;
+				}
+				optionVector.emplace_back("tsize", opt.value, i);
+
+				std::cout << tsize << std::endl;
+			}
+			else if( !strcmp( opt.option, "timeout"))
+			{
+				timeout.tv_sec = atoi(opt.value);
+				optionVector.emplace_back("timeout", opt.value, i);
+
+				std::cout << tsize << std::endl;
+			}
+			
+			i++;
+    	}
+		writeWRQ(c_adress, request->filename, request->mode, optionVector);
+		bool dontWait = true;
+		if( !optionVector.empty() )
+		{
+			dontWait = false;
+			sendOAck(optionVector,0, 6);
+		}
+		else
+		{
+			dontWait = false;
+			sendAck(0, 4);
+		}
 
 		size_t block = 1;
-
+		const size_t blockSize = blocksize > 0 ? blocksize : 512;
 		socklen_t client_len = sizeof(c_adress);
-		ssize_t received = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&c_adress, &client_len);
-		if( received < 0 )
+		if(dontWait)
 		{
-			perror("Receiving failed");
-			std::cerr << "Failed to receive" << std::endl;
-			return;
-		}
-
-		uint16_t clientBlocksize = 512;
-
-		if (received >= 4)
-		{
-			TFTPDataBlock *datablock = reinterpret_cast<TFTPDataBlock *>(buffer);
-
-			if( ntohs(datablock->opcode) == 3)
+			ssize_t received = recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *)&c_adress, &client_len);
+			if( received < 0 )
 			{
-				clientBlocksize = ntohs(datablock->blockNumber);
+				std::cout << "Failed to receive" << std::endl;
+				return;
+			}
 
-				sendAck(block,4);
+			uint16_t clientBlocksize = 512;
+
+			uint16_t opcode = (buffer[0] << 8) | buffer[1];
+
+			if(opcode != 4 )
+			{
+				//Poslat error paket
+				return;
+			}
+		
+			if (received >= 4)
+			{
+				TFTPDataBlock *datablock = reinterpret_cast<TFTPDataBlock *>(buffer);
+
+				if( ntohs(datablock->opcode) == 3)
+				{
+					writeDATA(c_adress, serv_port, ntohs(datablock->blockNumber));
+					
+					file.write(datablock->data, received - 4);
+
+					++block;
+					
+					sendAck(block,4);
+
+					if( received < blockSize )
+					{
+						return;
+					}
+
+				}
+				else
+				{
+					std::cout << "Unexpected TFTP packet type" << std::endl;
+					return;
+				}
 			}
 			else
 			{
-				std::cerr << "Unexpected TFTP packet type" << std::endl;
-				return;
+				//poslat error paket
 			}
 		}
-
-		const size_t blockSize = clientBlocksize > 0 ? clientBlocksize : 512;
 
 		while (true)
 		{
 			ssize_t received = recvfrom(sockfd, buffer, blockSize+4, 0, (struct sockaddr *)&c_adress, &client_len);
 			if( received < 0 )
 			{
-				perror("Receiving failed");
-				std::cerr << "Failed to receive data, Error: " << errno << std::endl;
+				std::cout << "Failed to receive data, Error: " << errno << std::endl;
 
 				break;
 			}
@@ -370,31 +466,28 @@ private:
 
 				if (ntohs(dataBlock->opcode) == 3)
 				{
+					writeDATA(c_adress, serv_port, dataBlock->blockNumber);
+					std::cout << dataBlock->data << std::endl;
+					
+					file.write(dataBlock->data, received - 4);
 
-					if( ntohs(dataBlock->blockNumber) == block)
+					++block;
+
+					sendAck(block,4);
+
+					if( received < blockSize )
 					{
-						file.write(dataBlock->data, received - 4);
-
-						++block;
-
-						sendAck(block,4);
+						return;
 					}
-					else
-					{
-						//TODO
-						//Send error packet
-						break;
-					}
+				
 				}
 				else
 				{
-					perror("Undefined: ");
-					std::cerr << "Unexpected TFTP packet type" << std::endl;
+					std::cout << "Unexpected TFTP packet type" << std::endl;
 
 					break;
 				}
 			}
-
 
 		}
 
@@ -413,8 +506,7 @@ private:
 
 		if( sendto(sockfd, &acknowledment, sizeof(acknowledment), 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
 		{
-			perror("Error sending ACK packet");
-			std::cerr << "Failed to send ACK packet. Error code: " << errno << std::endl;
+			std::cout << "Failed to send ACK packet. Error code: " << errno << std::endl;
 
 		}
 
@@ -450,20 +542,18 @@ private:
 
 		if( sendto(sockfd, &acknowledment, sizeof(acknowledment), 0, (struct sockaddr *)&c_adress, sizeof(c_adress)) < 0)
 		{
-			perror("Error sending ACK packet");
-			std::cerr << "Failed to send ACK packet. Error code: " << errno << std::endl;
+			std::cout << "Failed to send ACK packet. Error code: " << errno << std::endl;
 
 		}
 	}
 
-	
-
+	int sigintReceived;
 	int serv_port;
 	int sockfd;
-	sockaddr_in c_adress;
-	const std::string root_dirpath;
-	std::vector<int> clients;
 	bool stopRequest;
+	sockaddr_in c_adress;
+	std::string root_dirpath;
+	std::vector<int> clients;
 	char buffer[BUFSIZE];
 
 

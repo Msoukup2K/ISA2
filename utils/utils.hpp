@@ -69,5 +69,12 @@ struct s_parameters{
     std::string root;
 };
 
+struct TFTPERROR
+{
+    uint16_t opcode;
+    uint16_t errorcode;
+    std::string message;
+};
+
 
 #endif
