@@ -1,2 +1,2 @@
 server/server_main.o: server/server_main.cpp server/../utils/utils.hpp \
-  server/server.cpp
+ server/server.cpp server/../utils/netasciiparser.hpp

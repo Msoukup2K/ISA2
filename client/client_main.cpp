@@ -14,8 +14,10 @@
 #include <cstdint>
 #include <cstring>
 #include <unistd.h>
+#include <fstream>
 
 #include "../utils/utils.hpp"
+#include "../utils/netasciiparser.hpp"
 #define BUFSIZE 1024
 
 
@@ -26,7 +28,7 @@ void sendAck(int sockfd, sockaddr_in adress ,uint16_t block,int opc)
 {
     std::cout << "Sending ACK packet." << std::endl;
 
-    TFTPDataBlock acknowledment;
+    TFTPACK acknowledment;
 
     acknowledment.opcode = htons(opc);
     acknowledment.blockNumber = htons(block);
@@ -107,17 +109,18 @@ int main( int argc, char *argv[] )
 
         strncpy(request.filename, params.dest.c_str(), sizeof(request.filename));
         strncpy(request.mode, "octet", sizeof(request.mode));
-        strncpy(request.options, "blksize=1024", sizeof(request.options));
+        strncpy(request.opts->option, "blksize\0", sizeof(request.opts->option));
+        strncpy(request.opts->value, "1024\0", sizeof(request.opts->value));
 
     }
     else
     {
         request.opcode = htons(1); //RRQ opcode
 
-        strncpy(request.filename, "example.txt\0", sizeof(request.filename));
+        strncpy(request.filename, params.filepath.c_str() + '\0', sizeof(request.filename));
         strncpy(request.mode, "octet\0", sizeof(request.mode));
-        strncpy(request.options, "blksize\0", sizeof(request.options));
-        strncpy(request.optionValue,"1024\0", sizeof(request.optionValue));
+        //strncpy(request.opts->option, "tsize\0", sizeof(request.opts->option));
+        //strncpy(request.opts->value, "65536\0", sizeof(request.opts->value));
     }
 
     if ((sckt = socket(AF_INET, SOCK_DGRAM,0)) < 0)
@@ -141,7 +144,9 @@ int main( int argc, char *argv[] )
 
     socklen_t server_len = sizeof(s_addr);
 
-
+    int blksizeOption = 512;
+    int timeoutOption = 0;
+    int tsizeOption = 0;
     if( params.filepath.empty() )
     {
 
@@ -204,36 +209,59 @@ int main( int argc, char *argv[] )
     }
     else
     {
+        int opts = 1;
+            // TODO TADY bude jeste kontrola jessli prijdou nejake options
             //RRQ
-            ssize_t received = recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr *)&s_addr, &server_len);
-            if( received < 0)
+            if( opts == 0 )
             {
-                perror("S fail");
-
-                std::cerr << "Faioled to get a respo" << std::endl;
-
-            }
-            size_t block = 0;
-            if( received >= 4)
-            {
-                TFTPDataBlock *responseBlock = reinterpret_cast<TFTPDataBlock *>(buffer);
-
-                if (ntohs(responseBlock->opcode) == 6)
+                ssize_t received = recvfrom(sckt, buffer, sizeof(buffer), 0, (struct sockaddr *)&s_addr, &server_len);
+                if( received < 0)
                 {
-                    uint16_t rblock = ntohs(responseBlock->blockNumber);
+                    perror("S fail");
 
-                    std::cout << "Received OACK" << rblock << std::endl;
-
-
-                    sendAck(sckt, s_addr, block, 4);
+                    std::cerr << "Faioled to get a respo" << std::endl;
 
                 }
-                else
-                {
-                    std::cout << "ERROR musí byt negotiated blocksize" << std::endl;
-                    exit(1);
-                }
+                size_t block = 0;
                 
+                if( received >= 4)
+                {
+                    TFTPOACK *responseBlock = reinterpret_cast<TFTPOACK *>(buffer);
+
+                    if (ntohs(responseBlock->opcode) == 6)
+                    {
+
+                        std::cout << "Received OACK" << std::endl;
+
+                        for (const auto &opt : responseBlock->opts) 
+                        {
+                            
+                            if( !strcmp( opt.option, "blksize"))
+                            {
+                                blksizeOption = atoi(opt.value);
+                            }
+                            else if( !strcmp( opt.option, "tsize"))
+                            {
+                                tsizeOption = atoi(opt.value);
+                                
+                            }
+                            else if( !strcmp( opt.option, "timeout"))
+                            {
+                                timeoutOption = atoi(opt.value);
+                            }
+
+                        }
+
+                        sendAck(sckt, s_addr, block, 4);
+
+                    }
+                    else
+                    {
+                        std::cout << "ERROR musí byt negotiated blocksize" << std::endl;
+                        exit(1);
+                    }
+                    
+                }
             }
 
             while(true)
@@ -247,13 +275,28 @@ int main( int argc, char *argv[] )
                     if (ntohs(dataBlock->opcode) == 3)
                     {
                         uint16_t block = ntohs(dataBlock->blockNumber);
+                        //char *responseData = convertFromNetascii(dataBlock->data);
 
                         std::cout << "Received data Block #" << block << std::endl;
                         std::cout << "Received bytes: " << dataBlock->data << std::endl;
+                        
+                        std::ofstream destFile(dest_wd.c_str(), std::ios::binary | std::ios::app);
 
+                        if (!destFile.is_open()) {
+                            std::cerr << "Error opening destination file: " << dest_wd << std::endl;
+                            // Handle the error as needed
+                            break;
+                        }
+
+                        // Write the received data to the destination file
+                        destFile.write(dataBlock->data, received - 4); // Exclude the 4 bytes of the TFTP header
+
+                        // Close the destination file
+                        destFile.close();
+                        
                         sendAck(sckt, s_addr, ++block, 4);
 
-                        if( received < 512 )
+                        if( received < blksizeOption )
                         {
                             break;
                         }
