@@ -79,6 +79,9 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "span": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "__memory": "cpp",
+        "charconv": "cpp",
+        "format": "cpp"
     }
 }

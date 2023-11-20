@@ -151,6 +151,7 @@ private:
 		struct timeval timeout;
 		char optionVal[25];
 		std::memset(&timeout, 0, sizeof(timeout));
+		//kontrola co to je za option musi se projit vsechna option
 
 		std::vector<OptionInfo> optionVector;
 		int i = 1;
@@ -245,6 +246,7 @@ private:
     		file.read(file_buffer.data(), blockSize);
 			
 
+			//parser pro mode
 			//convertToNetascii( file_buffer );
 
 			size_t actualDataSize = static_cast<size_t>(file.gcount());
@@ -349,6 +351,7 @@ private:
 		int blocksize = 512;
 		int tsize;
 		struct timeval timeout;
+		//kontrola co to je za option musi se projit vsechna option
 
 		std::vector<OptionInfo> optionVector;
 		int i = 1;
