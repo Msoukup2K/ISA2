@@ -1,8 +1,1 @@
-xsouku15/client/client_main.cpp
-xsouku15/server/server_main.cpp
-xsouku15/server/server.cpp
-xsouku15/utils/infowriter.cpp
-xsouku15/utils/infowriter.hpp
-xsouku15/utils/netasciiparser.cpp
-xsouku15/utils/netasciiparser.hpp
-xsouku15/utils/utils.hpp
+.vscode
